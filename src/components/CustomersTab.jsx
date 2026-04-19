@@ -15,7 +15,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-export default function CustomersTab({ data, metricsData, ltm, benchmark, config }) {
+export default function CustomersTab({ data, ltm, benchmark }) {
   const hasNewCustomers = data.some((d) => d.newCustomers !== null && d.newCustomers !== undefined && d.newCustomers > 0);
 
   // Chart data for stacked bar

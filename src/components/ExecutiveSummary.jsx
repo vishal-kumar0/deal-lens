@@ -1,7 +1,8 @@
-import { getBenchmark, getSignalColor } from '../modules/benchmarks';
+import { getSignalColor } from '../modules/benchmarks';
 import { fmt, fmtCurrency } from '../modules/insightEngine';
+import QualitativeOverlay from './QualitativeOverlay';
 
-export default function ExecutiveSummary({ ltm, insights, benchmark, config }) {
+export default function ExecutiveSummary({ ltm, insights, benchmark, qualitative, setQualitative }) {
   const gmColor = getSignalColor(ltm.ltmGrossMargin, benchmark.grossMargin);
   const ebitdaColor = ltm.ltmEBITDAMargin >= benchmark.ebitdaMargin.green ? 'green' : ltm.ltmEBITDAMargin >= benchmark.ebitdaMargin.amber ? 'amber' : 'red';
   const revColor = ltm.revenueGrowth !== null ? (ltm.revenueGrowth >= benchmark.revenueGrowth.green ? 'green' : ltm.revenueGrowth >= benchmark.revenueGrowth.amber ? 'amber' : 'red') : 'amber';
@@ -85,6 +86,11 @@ export default function ExecutiveSummary({ ltm, insights, benchmark, config }) {
           </div>
         )}
       </div>
+
+      {/* Qualitative Overlay */}
+      {qualitative && setQualitative && (
+        <QualitativeOverlay qualitative={qualitative} setQualitative={setQualitative} />
+      )}
 
       {/* Watch List */}
       <div className="section">

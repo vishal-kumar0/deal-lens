@@ -15,7 +15,7 @@ const TABS = [
   { id: 'efficiency', label: 'Efficiency' },
 ];
 
-export default function Dashboard({ config, onReset }) {
+export default function Dashboard({ config, qualitative, setQualitative }) {
   const [activeTab, setActiveTab] = useState('summary');
   const [timeframe, setTimeframe] = useState('monthly');
 
@@ -24,10 +24,10 @@ export default function Dashboard({ config, onReset }) {
     const ltm = computeLTMMetrics(metricsData);
     const bridge = computeEBITDABridge(metricsData);
     const quarterly = aggregateQuarterly(metricsData);
-    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, config.dealType) : null;
+    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, config.dealType, qualitative) : null;
     const benchmark = getBenchmark(config.businessType);
     return { metricsData, ltm, bridge, quarterly, insights, benchmark };
-  }, [config]);
+  }, [config, qualitative]);
 
   const displayData = timeframe === 'quarterly' ? processed.quarterly : processed.metricsData;
 
@@ -60,7 +60,8 @@ export default function Dashboard({ config, onReset }) {
             ltm={processed.ltm}
             insights={processed.insights}
             benchmark={processed.benchmark}
-            config={config}
+            qualitative={qualitative}
+            setQualitative={setQualitative}
           />
         )}
         {activeTab === 'growth' && (

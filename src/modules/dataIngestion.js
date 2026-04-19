@@ -1,8 +1,3 @@
-/**
- * Data ingestion — CSV parsing with fuzzy column mapping.
- * Uses PapaParse for robust CSV handling.
- */
-
 import Papa from 'papaparse';
 
 // Known aliases for each required field
@@ -22,9 +17,43 @@ const OPTIONAL_ALIASES = {
   marketing_spend: ['marketing_spend', 'marketing_cost', 'marketing', 'advertising', 'ad_spend', 'cac_spend', 'sales_marketing', 'sales_and_marketing'],
 };
 
-/**
- * Parse a CSV file and return structured data with column mapping.
- */
+export async function parseExcel(file) {
+  const { read, utils } = await import('xlsx');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = read(data, { type: 'array', cellDates: true });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false });
+        if (jsonData.length < 2) {
+          reject(new Error('Excel file appears empty or has no data rows'));
+          return;
+        }
+        const headers = jsonData[0].map(String);
+        const rawData = jsonData.slice(1).map((row) => {
+          const obj = {};
+          headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+          return obj;
+        });
+        const mapping = autoMapColumns(headers);
+        resolve({ rawData, headers, mapping, rowCount: rawData.length });
+      } catch (err) {
+        reject(new Error('Failed to parse Excel file: ' + err.message));
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+export function parseFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) return parseExcel(file);
+  return parseCSV(file);
+}
+
 export function parseCSV(file) {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
@@ -55,7 +84,7 @@ export function parseCSV(file) {
  */
 export function autoMapColumns(headers) {
   const mapping = {};
-  const normalizedHeaders = headers.map((h) => h.toLowerCase().trim().replace(/[\s\-\.]+/g, '_'));
+  const normalizedHeaders = headers.map((h) => h.toLowerCase().trim().replace(/[\s-.]+/g, '_'));
 
   // Map required fields
   for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
@@ -106,7 +135,7 @@ export function parseDate(dateStr) {
   };
 
   // Pattern: "Mon-YY" or "Mon-YYYY" or "Month YYYY"
-  const monthYearMatch = str.match(/^([a-zA-Z]+)[\s\-\/](\d{2,4})$/);
+  const monthYearMatch = str.match(/^([a-zA-Z]+)[\s\-/](\d{2,4})$/);
   if (monthYearMatch) {
     const month = monthNames[monthYearMatch[1].toLowerCase()];
     let year = parseInt(monthYearMatch[2]);
@@ -115,13 +144,13 @@ export function parseDate(dateStr) {
   }
 
   // Pattern: "YYYY-MM" or "YYYY/MM"
-  const isoMatch = str.match(/^(\d{4})[\-\/](\d{1,2})$/);
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})$/);
   if (isoMatch) {
     return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, 1);
   }
 
   // Pattern: "MM/YYYY" or "MM-YYYY"
-  const mmyyyyMatch = str.match(/^(\d{1,2})[\-\/](\d{4})$/);
+  const mmyyyyMatch = str.match(/^(\d{1,2})[-/](\d{4})$/);
   if (mmyyyyMatch) {
     return new Date(parseInt(mmyyyyMatch[2]), parseInt(mmyyyyMatch[1]) - 1, 1);
   }
@@ -133,42 +162,43 @@ export function parseDate(dateStr) {
   return null;
 }
 
-/**
- * Clean and transform raw CSV data using the column mapping.
- */
 export function transformData(rawData, mapping) {
-  return rawData
-    .map((row) => {
-      const date = parseDate(row[mapping.date]);
-      if (!date) return null;
+  const results = [];
+  const parseErrors = [];
 
-      const entry = {
-        date,
-        dateLabel: formatDateLabel(date),
-        revenue: cleanNumber(row[mapping.revenue]),
-        customers: cleanNumber(row[mapping.customers]),
-        cogs: cleanNumber(row[mapping.cogs]),
-        opex: cleanNumber(row[mapping.opex]),
-      };
+  rawData.forEach((row, index) => {
+    const date = parseDate(row[mapping.date]);
+    if (!date) {
+      parseErrors.push({ rowIndex: index + 2, field: 'date', rawValue: String(row[mapping.date] ?? ''), reason: 'Could not parse date — expected: Jan-24, 2024-01, 01/2024' });
+      return;
+    }
 
-      // Optional fields
-      if (mapping.new_customers) {
-        entry.newCustomers = cleanNumber(row[mapping.new_customers]);
-      }
-      if (mapping.churn) {
-        entry.churn = cleanNumber(row[mapping.churn]);
-      }
-      if (mapping.headcount) {
-        entry.headcount = cleanNumber(row[mapping.headcount]);
-      }
-      if (mapping.marketing_spend) {
-        entry.marketingSpend = cleanNumber(row[mapping.marketing_spend]);
-      }
+    const entry = {
+      date,
+      dateLabel: formatDateLabel(date),
+      revenue: cleanNumber(row[mapping.revenue]),
+      customers: cleanNumber(row[mapping.customers]),
+      cogs: cleanNumber(row[mapping.cogs]),
+      opex: cleanNumber(row[mapping.opex]),
+    };
 
-      return entry;
-    })
-    .filter((row) => row !== null)
-    .sort((a, b) => a.date - b.date);
+    for (const [field, key] of [['revenue', mapping.revenue], ['customers', mapping.customers], ['cogs', mapping.cogs], ['opex', mapping.opex]]) {
+      const raw = String(row[key] ?? '');
+      if (raw !== '' && raw !== '0' && entry[field] === 0) {
+        parseErrors.push({ rowIndex: index + 2, field, rawValue: raw, reason: 'Non-numeric value — treated as 0' });
+      }
+    }
+
+    if (mapping.new_customers) entry.newCustomers = cleanNumber(row[mapping.new_customers]);
+    if (mapping.churn) entry.churn = cleanNumber(row[mapping.churn]);
+    if (mapping.headcount) entry.headcount = cleanNumber(row[mapping.headcount]);
+    if (mapping.marketing_spend) entry.marketingSpend = cleanNumber(row[mapping.marketing_spend]);
+
+    results.push(entry);
+  });
+
+  const data = results.sort((a, b) => a.date - b.date);
+  return { data, parseErrors, successCount: data.length, totalRows: rawData.length };
 }
 
 function cleanNumber(val) {

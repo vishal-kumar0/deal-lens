@@ -1,28 +1,55 @@
-/**
- * Insight Engine — rule-based signal generation.
- *
- * Produces:
- * 1. Atomic signals (single metric observations)
- * 2. Composite insights (multi-metric synthesis)
- * 3. Deal thesis (Bain/MBB consulting style)
- * 4. Watch list (tied to thesis claims)
- *
- * All thresholds are industry-specific via benchmarks module.
- */
-
 import { getBenchmark } from './benchmarks';
 
-/**
- * Generate all insights from LTM metrics.
- */
-export function generateInsights(ltm, metricsData, businessType, dealType) {
+export function generateInsights(ltm, metricsData, businessType, dealType, qualitative = null) {
   const bench = getBenchmark(businessType);
-  const signals = generateAtomicSignals(ltm, bench);
+  const baseSignals = generateAtomicSignals(ltm, bench);
+  const qualSignals = qualitative ? generateQualitativeSignals(qualitative) : [];
+  const signals = [...baseSignals, ...qualSignals];
+  const order = { red: 0, amber: 1, green: 2 };
+  signals.sort((a, b) => order[a.severity] - order[b.severity]);
+
   const composites = generateCompositeInsights(ltm, signals, bench);
-  const thesis = generateDealThesis(ltm, signals, composites, bench, dealType, businessType);
-  const watchList = generateWatchList(ltm, signals, thesis);
+  let thesis = generateDealThesis(ltm, signals, composites, bench, dealType, businessType);
+  let watchList = generateWatchList(ltm);
+
+  if (qualitative) {
+    watchList = [...watchList, ...generateQualitativeWatchItems(qualitative)];
+    thesis = augmentThesisWithQualitative(thesis, qualitative);
+  }
 
   return { signals, composites, thesis, watchList };
+}
+
+function generateQualitativeSignals(q) {
+  const signals = [];
+  if (q.managementRating !== null && q.managementRating < 3) {
+    signals.push({ category: 'qualitative', severity: 'red', text: `Analyst flagged management quality concerns (rated ${q.managementRating}/5) — succession planning and leadership depth require diligence` });
+  }
+  if (q.marketDynamics === 'contracting') {
+    signals.push({ category: 'qualitative', severity: 'red', text: 'Analyst assesses market dynamics as contracting — validate whether revenue growth represents share gain against a shrinking TAM' });
+  }
+  if (q.moats.includes('none')) {
+    signals.push({ category: 'qualitative', severity: 'amber', text: 'No competitive moat identified by analyst — pricing power and customer retention durability are unvalidated' });
+  }
+  return signals;
+}
+
+function generateQualitativeWatchItems(q) {
+  const items = [];
+  if (q.managementRating !== null && q.managementRating < 3) {
+    items.push({ claim: `Management quality rated ${q.managementRating}/5`, question: 'Obtain references for the CEO and CFO. Map key-person dependencies. Evaluate whether board composition and potential leadership upgrades post-acquisition can mitigate the identified risk.' });
+  }
+  if (q.marketDynamics === 'contracting') {
+    items.push({ claim: 'Analyst flagged contracting market dynamics', question: 'Quantify addressable market trajectory using independent market data (IBISWorld, Euromonitor, or sector-specific reports). Determine whether the company can grow share faster than the market shrinks, and at what customer acquisition cost.' });
+  }
+  return items;
+}
+
+function augmentThesisWithQualitative(thesis, q) {
+  if (q.moats.includes('none')) {
+    return thesis + ' [Analyst note: no identifiable competitive moat — the investment thesis is dependent on continued execution rather than structural defensibility.]';
+  }
+  return thesis;
 }
 
 /**
@@ -224,13 +251,13 @@ function generateCompositeInsights(ltm, signals, bench) {
  * Generate deal thesis — Bain/MBB consulting style.
  * Hypothesis-first, assertive, specific numbers, no hedging.
  */
-function generateDealThesis(ltm, signals, composites, bench, dealType, businessType) {
+function generateDealThesis(ltm, signals, composites, bench, dealType) {
   const parts = [];
 
   if (dealType === 'growth_equity') {
     parts.push(generateGrowthEquityThesis(ltm, bench));
   } else if (dealType === 'buyout') {
-    parts.push(generateBuyoutThesis(ltm, bench));
+    parts.push(generateBuyoutThesis(ltm));
   } else if (dealType === 'distressed') {
     parts.push(generateDistressedThesis(ltm, bench));
   }
@@ -283,7 +310,7 @@ function generateGrowthEquityThesis(ltm, bench) {
   return parts.join(' ');
 }
 
-function generateBuyoutThesis(ltm, bench) {
+function generateBuyoutThesis(ltm) {
   const parts = [];
 
   // Sentence 1: Cash generation headline
@@ -356,7 +383,7 @@ function generateDistressedThesis(ltm, bench) {
 /**
  * Generate watch list — diligence questions tied to thesis claims.
  */
-function generateWatchList(ltm, signals, thesis) {
+function generateWatchList(ltm) {
   const items = [];
 
   // ARPU decline → investigate driver

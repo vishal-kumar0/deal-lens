@@ -1,4 +1,4 @@
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, ReferenceLine } from 'recharts';
+import { BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, ReferenceLine } from 'recharts';
 import { computeCAGR, detectGrowthTrend } from '../modules/metricCalculator';
 import { fmt, fmtCurrency } from '../modules/insightEngine';
 
@@ -108,10 +108,9 @@ export default function GrowthTab({ data, metricsData, ltm, bridge, benchmark })
               <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                {bridge.items.map((entry, i) => {
-                  let fill = entry.isTotal ? 'var(--chart-1)' : entry.value >= 0 ? 'var(--green)' : 'var(--red)';
-                  return <rect key={i} fill={fill} />;
-                })}
+                {bridge.items.map((entry, i) => (
+                  <Cell key={i} fill={entry.isTotal ? 'var(--chart-1)' : entry.value >= 0 ? 'var(--green)' : 'var(--red)'} />
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

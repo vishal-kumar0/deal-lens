@@ -1,4 +1,4 @@
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { fmt, fmtCurrency } from '../modules/insightEngine';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -15,7 +15,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-export default function EfficiencyTab({ data, metricsData, ltm, bridge, benchmark }) {
+export default function EfficiencyTab({ data, ltm, bridge, benchmark }) {
   const chartData = data.map((d) => ({
     name: d.dateLabel,
     'Gross Margin %': parseFloat((d.grossMargin ?? 0).toFixed(1)),
@@ -164,7 +164,7 @@ export default function EfficiencyTab({ data, metricsData, ltm, bridge, benchmar
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {bridge.items.map((entry, i) => (
-                  <rect key={i} fill={entry.isTotal ? 'var(--chart-1)' : entry.value >= 0 ? 'var(--green)' : 'var(--red)'} />
+                  <Cell key={i} fill={entry.isTotal ? 'var(--chart-1)' : entry.value >= 0 ? 'var(--green)' : 'var(--red)'} />
                 ))}
               </Bar>
             </BarChart>

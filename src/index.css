@@ -378,3 +378,165 @@ body {
 }
 .custom-tooltip .label { font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
 .custom-tooltip .item { font-size: 12px; color: var(--text-secondary); margin: 2px 0; }
+
+/* ---- Privacy Modal ---- */
+.privacy-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.privacy-card {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 16px; padding: 40px; max-width: 480px; width: 100%;
+  box-shadow: var(--shadow);
+}
+.privacy-icon { font-size: 36px; margin-bottom: 16px; }
+.privacy-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+.privacy-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6; }
+.privacy-bullets { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+.privacy-bullet { display: flex; gap: 10px; font-size: 13px; color: var(--text-primary); line-height: 1.6; }
+.privacy-bullet-icon { font-size: 14px; color: var(--green); flex-shrink: 0; font-weight: 700; width: 18px; }
+.privacy-ack-btn { width: 100%; padding: 14px; font-size: 15px; }
+
+/* ---- Header Privacy Badge ---- */
+.header-privacy-badge {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500;
+  color: var(--green); border: 1px solid var(--green-border); background: var(--green-bg);
+  cursor: default; position: relative;
+}
+.header-privacy-tooltip {
+  display: none; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--text-secondary); white-space: nowrap;
+  max-width: 280px; white-space: normal; line-height: 1.5; z-index: 100;
+  box-shadow: var(--shadow);
+}
+.header-privacy-badge:hover .header-privacy-tooltip { display: block; }
+
+/* ---- Clear Notification ---- */
+.clear-notification {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  background: var(--green-bg); border: 1px solid var(--green-border);
+  color: var(--green); padding: 12px 20px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; box-shadow: var(--shadow);
+}
+
+/* ---- Sensitive Mode Button ---- */
+.sensitive-btn.active { color: var(--amber); border-color: var(--amber-border); }
+
+/* ---- Parse Error Banner ---- */
+.parse-error-banner {
+  background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red);
+  padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 12px;
+}
+
+/* ---- Data Quality Report ---- */
+.dq-stat-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;
+}
+.dq-stat {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+}
+.dq-stat-value { font-size: 18px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
+.dq-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.dq-warning {
+  background: var(--amber-bg); border: 1px solid var(--amber-border); color: var(--amber);
+  padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px;
+}
+.dq-section-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted); margin-bottom: 10px; margin-top: 16px;
+}
+.dq-completeness { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.dq-comp-row { display: flex; align-items: center; gap: 10px; }
+.dq-comp-field { font-size: 12px; font-weight: 500; width: 80px; color: var(--text-secondary); }
+.dq-comp-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.dq-comp-bar { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+.dq-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; width: 40px; text-align: center; }
+.dq-badge-green { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.dq-badge-amber { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+.dq-badge-red { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+.dq-outlier {
+  font-size: 12px; color: var(--amber); background: var(--amber-bg);
+  border: 1px solid var(--amber-border); padding: 8px 12px; border-radius: 6px; margin-bottom: 6px;
+}
+.dq-errors {
+  margin-top: 12px; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.dq-errors summary {
+  padding: 10px 14px; font-size: 13px; color: var(--red); cursor: pointer; font-weight: 500;
+}
+.dq-error-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dq-error-table th {
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 11px;
+}
+.dq-error-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.dq-error-table tr:last-child td { border-bottom: none; }
+
+/* ---- Qualitative Overlay ---- */
+.qual-overlay {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 8px;
+  border-left: 3px solid var(--amber);
+}
+.qual-section { margin-bottom: 20px; }
+.qual-section:last-of-type { margin-bottom: 0; }
+.qual-section-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+.qual-row { margin-bottom: 8px; }
+.star-rating { display: flex; align-items: center; gap: 4px; }
+.star {
+  background: none; border: none; cursor: pointer; font-size: 22px;
+  color: var(--border-light); transition: color 0.15s; padding: 0 2px; line-height: 1;
+}
+.star.active { color: var(--amber); }
+.star:hover { color: var(--amber); }
+.star-label { font-size: 13px; font-weight: 600; margin-left: 8px; }
+.market-btn-group { display: flex; gap: 8px; margin-bottom: 8px; }
+.market-btn {
+  padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  cursor: pointer; border: 1px solid var(--border); background: var(--bg-surface);
+  color: var(--text-secondary); transition: var(--transition); font-family: 'Inter', sans-serif;
+}
+.market-btn.active { background: var(--accent-blue-dim); border-color: var(--accent-blue); color: var(--accent-blue); }
+.moat-checkbox-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;
+}
+.moat-option {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+  cursor: pointer; background: var(--bg-surface); color: var(--text-secondary);
+  transition: var(--transition);
+}
+.moat-option.checked { border-color: var(--accent-blue); background: var(--accent-blue-dim); color: var(--text-primary); }
+.moat-option input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent-blue); }
+.qual-textarea-wrap { position: relative; }
+.qual-textarea {
+  width: 100%; padding: 10px 12px; border-radius: 6px; font-size: 13px;
+  background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border);
+  font-family: 'Inter', sans-serif; resize: vertical; min-height: 60px; line-height: 1.5;
+  transition: border-color 0.15s;
+}
+.qual-textarea:focus { outline: none; border-color: var(--accent-blue); }
+.char-counter {
+  display: block; text-align: right; font-size: 11px; margin-top: 3px;
+  color: var(--text-muted);
+}
+.qual-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+.qual-footer-note { font-size: 11px; color: var(--text-muted); margin-top: 16px; }
+.qual-toggle-btn {
+  background: none; border: none; cursor: pointer; font-size: 12px;
+  color: var(--text-muted); font-family: 'Inter', sans-serif; white-space: nowrap;
+}
+.qual-toggle-btn:hover { color: var(--text-primary); }
+.qual-filled-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+  background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border);
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
