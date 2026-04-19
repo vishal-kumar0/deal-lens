@@ -2,7 +2,7 @@ import { getSignalColor } from '../modules/benchmarks';
 import { fmt, fmtCurrency } from '../modules/insightEngine';
 import QualitativeOverlay from './QualitativeOverlay';
 
-export default function ExecutiveSummary({ ltm, insights, benchmark, qualitative, setQualitative }) {
+export default function ExecutiveSummary({ ltm, insights, benchmark, qualitative, setQualitative, cimText, customerPanelData }) {
   const gmColor = getSignalColor(ltm.ltmGrossMargin, benchmark.grossMargin);
   const ebitdaColor = ltm.ltmEBITDAMargin >= benchmark.ebitdaMargin.green ? 'green' : ltm.ltmEBITDAMargin >= benchmark.ebitdaMargin.amber ? 'amber' : 'red';
   const revColor = ltm.revenueGrowth !== null ? (ltm.revenueGrowth >= benchmark.revenueGrowth.green ? 'green' : ltm.revenueGrowth >= benchmark.revenueGrowth.amber ? 'amber' : 'red') : 'amber';
@@ -86,6 +86,61 @@ export default function ExecutiveSummary({ ltm, insights, benchmark, qualitative
           </div>
         )}
       </div>
+
+      {/* CIM Context */}
+      {cimText && (
+        <div className="section">
+          <div className="section-title">CIM — Extracted Text<div className="line" /></div>
+          <details className="cim-block">
+            <summary className="cim-summary">View raw CIM text (analyst reference only)</summary>
+            <pre className="cim-text">{cimText}</pre>
+          </details>
+        </div>
+      )}
+
+      {/* Customer Retention Panel */}
+      {customerPanelData && customerPanelData.length > 0 && (() => {
+        const nrrRows = customerPanelData.filter((r) => r.nrr > 0);
+        const grrRows = customerPanelData.filter((r) => r.grr > 0);
+        const latestNRR = nrrRows.length ? nrrRows[nrrRows.length - 1].nrr : null;
+        const latestGRR = grrRows.length ? grrRows[grrRows.length - 1].grr : null;
+        const churnRows = customerPanelData.filter((r) => r.churnedCustomers !== undefined && r.activeCustomers > 0);
+        const latestChurnPct = churnRows.length ? ((churnRows[churnRows.length - 1].churnedCustomers / churnRows[churnRows.length - 1].activeCustomers) * 100 * 12) : null;
+        if (!latestNRR && !latestGRR && !latestChurnPct) return null;
+        return (
+          <div className="section">
+            <div className="section-title">Retention Metrics — Customer Panel<div className="line" /></div>
+            <div className="kpi-grid">
+              {latestNRR && (
+                <KPICard
+                  label="Net Revenue Retention"
+                  value={`${latestNRR.toFixed(1)}%`}
+                  change={latestNRR >= 120 ? 'Best-in-class' : latestNRR >= 100 ? 'Stable' : 'Below 100%'}
+                  changeColor={latestNRR >= 120 ? 'green' : latestNRR >= 100 ? 'amber' : 'red'}
+                  benchmark="Benchmark: >110% SaaS"
+                />
+              )}
+              {latestGRR && (
+                <KPICard
+                  label="Gross Revenue Retention"
+                  value={`${latestGRR.toFixed(1)}%`}
+                  change={latestGRR >= 90 ? 'Low gross churn' : latestGRR >= 80 ? 'Moderate churn' : 'Elevated churn'}
+                  changeColor={latestGRR >= 90 ? 'green' : latestGRR >= 80 ? 'amber' : 'red'}
+                  benchmark="Benchmark: >85% SaaS"
+                />
+              )}
+              {latestChurnPct !== null && (
+                <KPICard
+                  label="Annualised Logo Churn"
+                  value={`${latestChurnPct.toFixed(1)}%`}
+                  change={latestChurnPct < 10 ? 'Low attrition' : latestChurnPct < 20 ? 'Mid-market range' : 'Elevated'}
+                  changeColor={latestChurnPct < 10 ? 'green' : latestChurnPct < 20 ? 'amber' : 'red'}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Qualitative Overlay */}
       {qualitative && setQualitative && (

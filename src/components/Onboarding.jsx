@@ -1,9 +1,26 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import BENCHMARKS from '../modules/benchmarks';
-import { parseFile, transformData, transformSampleData, getMissingFields } from '../modules/dataIngestion';
+import {
+  parseFile, transformData, transformSampleData, getMissingFields,
+  detectFileType, parseCustomerPanel, parseCIM, autoMapCustomerPanel,
+} from '../modules/dataIngestion';
 import { generateSampleData } from '../modules/dataSimulation';
 
 const STEPS = ['business_type', 'upload', 'mapping', 'quality_report'];
+
+const FILE_TYPE_LABELS = {
+  pnl: 'Monthly P&L',
+  customer_panel: 'Customer Panel',
+  cim: 'CIM / PDF',
+  unknown: 'Unknown',
+};
+
+const FILE_TYPE_COLORS = {
+  pnl: 'detected-tag-blue',
+  customer_panel: 'detected-tag-green',
+  cim: 'detected-tag-muted',
+  unknown: 'detected-tag-warn',
+};
 
 function columnCompleteness(data) {
   return ['revenue', 'customers', 'cogs', 'opex'].map((field) => {
@@ -30,67 +47,164 @@ function outlierFlags(data) {
 export default function Onboarding({ onComplete }) {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState({ businessType: null });
-  const [fileData, setFileData] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [mapping, setMapping] = useState({});
   const [parseResult, setParseResult] = useState(null);
+  const [cimResult, setCimResult] = useState(null);
+  const [customerPanelData, setCustomerPanelData] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [useSample, setUseSample] = useState(false);
-  const [parseError, setParseError] = useState(null);
+  const [globalError, setGlobalError] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const pnlFile = uploadedFiles.find((f) => f.detectedType === 'pnl');
+  const cpFile = uploadedFiles.find((f) => f.detectedType === 'customer_panel');
+  const cimFile = uploadedFiles.find((f) => f.detectedType === 'cim');
+  const unknownFiles = uploadedFiles.filter((f) => f.detectedType === 'unknown');
 
   const canNext = () => {
     if (step === 0) return config.businessType !== null;
-    if (step === 1) return fileData !== null || useSample;
+    if (step === 1) return (pnlFile && !pnlFile.error) || useSample;
     if (step === 2) return getMissingFields(mapping).length === 0;
     if (step === 3) return true;
     return false;
   };
 
-  const handleNext = () => {
+  const handleFiles = useCallback(async (files) => {
+    setGlobalError(null);
+    const newEntries = [];
+    for (const file of files) {
+      const existing = uploadedFiles.find((f) => f.name === file.name);
+      if (existing) continue;
+
+      // Quick parse to get headers for type detection (PDFs skip this)
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.pdf')) {
+        newEntries.push({ id: Math.random(), file, name: file.name, detectedType: 'cim', headers: [], error: null, status: 'ready' });
+        continue;
+      }
+      try {
+        const parsed = await parseFile(file);
+        const detectedType = detectFileType(file.name, parsed.headers);
+        newEntries.push({
+          id: Math.random(),
+          file,
+          name: file.name,
+          detectedType,
+          headers: parsed.headers,
+          parsedRaw: parsed,
+          error: null,
+          status: 'ready',
+        });
+        if (detectedType === 'pnl') {
+          setMapping(parsed.mapping);
+        }
+      } catch (err) {
+        newEntries.push({ id: Math.random(), file, name: file.name, detectedType: 'unknown', headers: [], error: err.message, status: 'error' });
+      }
+    }
+    setUploadedFiles((prev) => [...prev, ...newEntries]);
+  }, [uploadedFiles]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) handleFiles(files);
+  }, [handleFiles]);
+
+  const handleFileInput = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) handleFiles(files);
+    e.target.value = '';
+  }, [handleFiles]);
+
+  const removeFile = (id) => setUploadedFiles((prev) => prev.filter((f) => f.id !== id));
+
+  const overrideType = (id, newType) => {
+    setUploadedFiles((prev) => prev.map((f) => {
+      if (f.id !== id) return f;
+      if (newType === 'pnl' && f.parsedRaw) setMapping(f.parsedRaw.mapping);
+      return { ...f, detectedType: newType };
+    }));
+  };
+
+  const handleNext = async () => {
     if (step === 1 && useSample) {
       const sampleRaw = generateSampleData();
       const data = transformSampleData(sampleRaw);
-      onComplete({ ...config, data, hasNewCustomers: true });
+      onComplete({ ...config, data, hasNewCustomers: true, customerPanelData: null, cimText: null });
       return;
     }
+
+    if (step === 1) {
+      // Move to mapping step for P&L
+      setStep(2);
+      return;
+    }
+
     if (step === 2) {
-      const result = transformData(fileData.rawData, mapping);
-      setParseResult(result);
-      setStep(3);
+      setProcessing(true);
+      try {
+        // Transform P&L
+        const result = transformData(pnlFile.parsedRaw.rawData, mapping);
+        setParseResult(result);
+
+        // Process customer panel if present
+        if (cpFile) {
+          try {
+            const cp = await parseCustomerPanel(cpFile.file);
+            setCustomerPanelData(cp.data);
+          } catch {
+            setCustomerPanelData(null);
+          }
+        }
+
+        // Process CIM if present
+        if (cimFile) {
+          try {
+            const cim = await parseCIM(cimFile.file);
+            setCimResult(cim);
+          } catch {
+            setCimResult(null);
+          }
+        }
+
+        setStep(3);
+      } catch (err) {
+        setGlobalError('Failed to process files: ' + err.message);
+      } finally {
+        setProcessing(false);
+      }
       return;
     }
+
     if (step === 3) {
-      onComplete({ ...config, data: parseResult.data, hasNewCustomers: !!mapping.new_customers });
+      onComplete({
+        ...config,
+        data: parseResult.data,
+        hasNewCustomers: !!mapping.new_customers,
+        customerPanelData: customerPanelData || null,
+        cimText: cimResult?.text || null,
+        cimPageCount: cimResult?.pageCount || null,
+      });
       return;
     }
+
     setStep((s) => s + 1);
   };
 
   const handleBack = () => setStep((s) => Math.max(0, s - 1));
 
-  const handleFile = useCallback(async (file) => {
-    setParseError(null);
-    try {
-      const result = await parseFile(file);
-      setFileData({ ...result, fileName: file.name });
-      setMapping(result.mapping);
-      setUseSample(false);
-    } catch (err) {
-      setParseError(err.message);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
-
   const handleSample = () => {
     setUseSample(true);
-    setFileData(null);
-    setParseError(null);
+    setUploadedFiles([]);
+    setGlobalError(null);
   };
+
+  const isLaunchStep = step === 3 || (step === 1 && useSample);
+  const btnLabel = isLaunchStep ? 'Launch Dashboard →' : step === 2 ? (processing ? 'Processing…' : 'Review Data →') : 'Continue';
 
   return (
     <div className="onboarding">
@@ -101,6 +215,7 @@ export default function Onboarding({ onComplete }) {
           ))}
         </div>
 
+        {/* Step 0 — Sector */}
         {step === 0 && (
           <>
             <h2 className="onboarding-title">Select Sector</h2>
@@ -120,72 +235,122 @@ export default function Onboarding({ onComplete }) {
           </>
         )}
 
+        {/* Step 1 — Multi-file Upload */}
         {step === 1 && (
           <>
-            <h2 className="onboarding-title">Upload Financial Data</h2>
+            <h2 className="onboarding-title">Upload Deal Files</h2>
             <p className="onboarding-subtitle">
-              Drop a CSV or Excel file with monthly financials. Required: Date, Revenue, Customers, COGS, OpEx.
-              Revenue model and deal type are detected automatically from the data.
+              Drop one or more files — Monthly P&L (CSV/Excel), Customer Panel (CSV), or CIM (PDF).
+              File types are detected automatically.
             </p>
-            {!fileData && !useSample && (
+
+            {!useSample && (
               <>
                 <div
                   className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
                   onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={handleDrop}
-                  onClick={() => document.getElementById('file-input').click()}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <div className="icon">📄</div>
-                  <div className="title">Drop CSV or Excel file here</div>
-                  <div className="hint">or click to browse · .csv, .xlsx, .xls</div>
+                  <div className="icon">📂</div>
+                  <div className="title">Drop files here or click to browse</div>
+                  <div className="hint">Monthly P&L · Customer Panel · CIM &nbsp;·&nbsp; CSV, XLSX, PDF</div>
                   <input
-                    id="file-input" type="file" accept=".csv,.xlsx,.xls"
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.pdf"
+                    multiple
                     style={{ display: 'none' }}
-                    onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
+                    onChange={handleFileInput}
                   />
                 </div>
-                {parseError && (
-                  <div className="parse-error-banner">⚠ {parseError}</div>
+
+                {globalError && <div className="parse-error-banner">⚠ {globalError}</div>}
+
+                {uploadedFiles.length > 0 && (
+                  <div className="multi-file-list">
+                    {uploadedFiles.map((f) => (
+                      <div key={f.id} className={`multi-file-row ${f.error ? 'has-error' : ''}`}>
+                        <span className="mf-icon">{f.detectedType === 'cim' ? '📋' : '📄'}</span>
+                        <span className="mf-name" title={f.name}>{f.name}</span>
+                        <select
+                          className={`mf-type-select ${FILE_TYPE_COLORS[f.detectedType]}`}
+                          value={f.detectedType}
+                          onChange={(e) => overrideType(f.id, e.target.value)}
+                        >
+                          <option value="pnl">Monthly P&L</option>
+                          <option value="customer_panel">Customer Panel</option>
+                          <option value="cim">CIM / PDF</option>
+                          <option value="unknown">Unknown</option>
+                        </select>
+                        {f.error
+                          ? <span className="mf-status mf-error" title={f.error}>⚠</span>
+                          : <span className="mf-status mf-ok">✓</span>
+                        }
+                        <button className="mf-remove" onClick={() => removeFile(f.id)}>✕</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
-                <div className="upload-divider">or</div>
-                <button className="btn-sample" onClick={handleSample}>
-                  📊 Use Sample Data — "Growth with Emerging Pressure"
-                </button>
+
+                {unknownFiles.length > 0 && (
+                  <div className="parse-error-banner">
+                    ⚠ {unknownFiles.length} file(s) could not be classified — use the dropdown to assign a type manually.
+                  </div>
+                )}
+
+                {!pnlFile && uploadedFiles.length === 0 && (
+                  <>
+                    <div className="upload-divider">or</div>
+                    <button className="btn-sample" onClick={handleSample}>
+                      📊 Use Sample Data — "Growth with Emerging Pressure"
+                    </button>
+                  </>
+                )}
+
+                {!pnlFile && uploadedFiles.length > 0 && (
+                  <div className="dq-warning" style={{ marginTop: 12 }}>
+                    ⚠ No Monthly P&L file detected — please upload or reclassify a file as "Monthly P&L" to continue.
+                  </div>
+                )}
               </>
             )}
-            {fileData && (
-              <div className="file-loaded">
-                <div className="icon">✅</div>
-                <div className="info">
-                  <div className="name">{fileData.fileName}</div>
-                  <div className="meta">{fileData.rowCount} rows · {fileData.headers.length} columns</div>
-                </div>
-                <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
-                  onClick={() => { setFileData(null); setMapping({}); }}>
-                  Change
-                </button>
-              </div>
-            )}
+
             {useSample && (
-              <div className="file-loaded">
-                <div className="icon">📊</div>
-                <div className="info">
-                  <div className="name">Sample Data</div>
-                  <div className="meta">24 months · Growth with Emerging Pressure</div>
+              <>
+                <div className="file-loaded">
+                  <div className="icon">📊</div>
+                  <div className="info">
+                    <div className="name">Sample Data</div>
+                    <div className="meta">24 months · Growth with Emerging Pressure</div>
+                  </div>
+                  <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
+                    onClick={() => setUseSample(false)}>
+                    Change
+                  </button>
                 </div>
-                <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
-                  onClick={() => setUseSample(false)}>
-                  Change
+                <div className="upload-divider">or</div>
+                <button className="btn-sample" onClick={() => fileInputRef.current?.click()}>
+                  📂 Upload your own files instead
                 </button>
-              </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.pdf"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => { setUseSample(false); handleFileInput(e); }}
+                />
+              </>
             )}
           </>
         )}
 
-        {step === 2 && fileData && (
+        {/* Step 2 — Column Mapping (P&L only) */}
+        {step === 2 && pnlFile && (
           <>
-            <h2 className="onboarding-title">Column Mapping</h2>
+            <h2 className="onboarding-title">Column Mapping — P&L</h2>
             <p className="onboarding-subtitle">
               Confirm how your columns map to the required fields. We've auto-detected where possible.
             </p>
@@ -199,7 +364,7 @@ export default function Onboarding({ onComplete }) {
                     onChange={(e) => setMapping({ ...mapping, [field]: e.target.value || undefined })}
                   >
                     <option value="">{field === 'new_customers' ? '(optional)' : '— select —'}</option>
-                    {fileData.headers.map((h) => (
+                    {pnlFile.headers.map((h) => (
                       <option key={h} value={h}>{h}</option>
                     ))}
                   </select>
@@ -207,20 +372,34 @@ export default function Onboarding({ onComplete }) {
                 </div>
               ))}
             </div>
+            {cpFile && (
+              <div className="cp-notice">
+                <span>📊</span>
+                <span>Customer Panel file detected — will be auto-mapped and merged automatically.</span>
+              </div>
+            )}
+            {cimFile && (
+              <div className="cp-notice">
+                <span>📋</span>
+                <span>CIM detected — text will be extracted and surfaced in Executive Summary.</span>
+              </div>
+            )}
+            {processing && <div className="parse-error-banner" style={{ background: 'none', color: 'var(--text-muted)' }}>⏳ Processing files…</div>}
           </>
         )}
 
+        {/* Step 3 — Quality Report */}
         {step === 3 && parseResult && (
           <>
             <h2 className="onboarding-title">Data Quality Report</h2>
-            <p className="onboarding-subtitle">Review before launching the dashboard. Analysis is available regardless of warnings.</p>
+            <p className="onboarding-subtitle">Review before launching the dashboard. Analysis proceeds regardless of warnings.</p>
 
             <div className="dq-stat-row">
               <div className="dq-stat">
                 <div className="dq-stat-value" style={{ color: parseResult.successCount === parseResult.totalRows ? 'var(--green)' : 'var(--amber)' }}>
                   {parseResult.successCount} / {parseResult.totalRows}
                 </div>
-                <div className="dq-stat-label">Rows parsed</div>
+                <div className="dq-stat-label">P&L rows parsed</div>
               </div>
               <div className="dq-stat">
                 <div className="dq-stat-value">{parseResult.data[0]?.dateLabel} → {parseResult.data[parseResult.data.length - 1]?.dateLabel}</div>
@@ -233,6 +412,22 @@ export default function Onboarding({ onComplete }) {
                 <div className="dq-stat-label">Required columns</div>
               </div>
             </div>
+
+            {customerPanelData && customerPanelData.length > 0 && (
+              <div className="dq-source-badge dq-source-cp">
+                <span>📊</span>
+                <span>Customer Panel loaded — {customerPanelData.length} months of cohort data</span>
+                {customerPanelData[0]?.nrr ? <span className="dq-cp-metrics"> · NRR, GRR available</span> : null}
+                {customerPanelData[0]?.churnedCustomers !== undefined ? <span className="dq-cp-metrics"> · Churn counts available</span> : null}
+              </div>
+            )}
+
+            {cimResult && (
+              <div className="dq-source-badge dq-source-cim">
+                <span>📋</span>
+                <span>CIM extracted — {cimResult.pageCount} pages · {Math.round(cimResult.text.length / 1000)}K chars</span>
+              </div>
+            )}
 
             {parseResult.successCount < 12 && (
               <div className="dq-warning">
@@ -274,7 +469,7 @@ export default function Onboarding({ onComplete }) {
                       <tr key={i}><td>{e.rowIndex}</td><td>{e.field}</td><td>{e.rawValue}</td><td>{e.reason}</td></tr>
                     ))}
                     {parseResult.parseErrors.length > 10 && (
-                      <tr><td colSpan={4} style={{ color: 'var(--text-muted)' }}>...and {parseResult.parseErrors.length - 10} more</td></tr>
+                      <tr><td colSpan={4} style={{ color: 'var(--text-muted)' }}>…and {parseResult.parseErrors.length - 10} more</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -285,8 +480,8 @@ export default function Onboarding({ onComplete }) {
 
         <div className="btn-row">
           {step > 0 && <button className="btn-secondary" onClick={handleBack}>Back</button>}
-          <button className="btn-primary" disabled={!canNext()} onClick={handleNext}>
-            {step === 3 || (step === 1 && useSample) ? 'Launch Dashboard →' : step === 2 ? 'Review Data →' : 'Continue'}
+          <button className="btn-primary" disabled={!canNext() || processing} onClick={handleNext}>
+            {btnLabel}
           </button>
         </div>
       </div>

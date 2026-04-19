@@ -1,5 +1,18 @@
 import Papa from 'papaparse';
 
+const CUSTOMER_PANEL_ALIASES = {
+  date: ['date', 'month', 'period', 'reporting_date', 'report_date', 'month_year'],
+  nrr: ['nrr', 'net_revenue_retention', 'net_dollar_retention', 'ndr', 'net_retention', 'net_revenue_retention_rate'],
+  grr: ['grr', 'gross_revenue_retention', 'gross_dollar_retention', 'gross_retention', 'gross_revenue_retention_rate'],
+  new_customers: ['new_customers', 'new_customer_count', 'acquired', 'new_subscribers', 'new_logos', 'new_accounts', 'adds'],
+  churned_customers: ['churned_customers', 'lost_customers', 'churn_count', 'cancelled', 'cancellations', 'churned', 'churned_count', 'churn'],
+  active_customers: ['active_customers', 'total_customers', 'customers', 'subscribers', 'active_accounts', 'active_logos', 'eop_customers'],
+  expansion_revenue: ['expansion_revenue', 'expansion_mrr', 'upsell', 'expansion', 'upsell_revenue', 'upgrade_revenue'],
+  contraction_revenue: ['contraction_revenue', 'contraction_mrr', 'downsell', 'contraction', 'downsell_revenue', 'downgrade_revenue'],
+  mrr: ['mrr', 'monthly_recurring_revenue', 'arr_monthly', 'monthly_revenue'],
+  arr: ['arr', 'annual_recurring_revenue'],
+};
+
 // Known aliases for each required field
 const COLUMN_ALIASES = {
   date: ['date', 'month', 'period', 'time', 'month_year', 'monthyear', 'reporting_date', 'report_date'],
@@ -238,4 +251,93 @@ export function getRequiredFields() {
 export function getMissingFields(mapping) {
   const required = getRequiredFields();
   return required.filter((field) => !mapping[field]);
+}
+
+/**
+ * Detect file type from filename + headers.
+ * Returns: 'pnl' | 'customer_panel' | 'cim' | 'unknown'
+ */
+export function detectFileType(filename, headers = []) {
+  const name = filename.toLowerCase();
+  if (name.endsWith('.pdf')) return 'cim';
+
+  const normalized = headers.map((h) => h.toLowerCase().trim().replace(/[\s\-.]+/g, '_'));
+
+  // Customer panel: look for NRR/GRR/churn/retention markers
+  const cpMarkers = ['nrr', 'grr', 'net_revenue_retention', 'gross_revenue_retention',
+    'churned', 'churn_rate', 'expansion', 'contraction', 'cohort', 'retention'];
+  if (cpMarkers.some((m) => normalized.some((h) => h.includes(m)))) return 'customer_panel';
+
+  // P&L: revenue + (cogs or opex)
+  const hasRevenue = normalized.some((h) => ['revenue', 'sales', 'turnover', 'income'].some((k) => h.includes(k)));
+  const hasCost = normalized.some((h) => ['cogs', 'cost', 'opex', 'operating'].some((k) => h.includes(k)));
+  if (hasRevenue && hasCost) return 'pnl';
+
+  // Fallback: if has a date + numeric columns, assume P&L
+  const hasDate = normalized.some((h) => ['date', 'month', 'period'].some((k) => h.includes(k)));
+  if (hasDate && hasRevenue) return 'pnl';
+
+  return 'unknown';
+}
+
+export function autoMapCustomerPanel(headers) {
+  const mapping = {};
+  const normalized = headers.map((h) => h.toLowerCase().trim().replace(/[\s\-.]+/g, '_'));
+  for (const [field, aliases] of Object.entries(CUSTOMER_PANEL_ALIASES)) {
+    const match = findBestMatch(normalized, aliases);
+    if (match !== null) mapping[field] = headers[match];
+  }
+  return mapping;
+}
+
+export function transformCustomerPanel(rawData, mapping) {
+  const results = [];
+  rawData.forEach((row) => {
+    const date = parseDate(row[mapping.date]);
+    if (!date) return;
+    const entry = { date, dateLabel: formatDateLabel(date) };
+    if (mapping.nrr) entry.nrr = cleanNumber(row[mapping.nrr]);
+    if (mapping.grr) entry.grr = cleanNumber(row[mapping.grr]);
+    if (mapping.new_customers) entry.newCustomers = cleanNumber(row[mapping.new_customers]);
+    if (mapping.churned_customers) entry.churnedCustomers = cleanNumber(row[mapping.churned_customers]);
+    if (mapping.active_customers) entry.activeCustomers = cleanNumber(row[mapping.active_customers]);
+    if (mapping.expansion_revenue) entry.expansionRevenue = cleanNumber(row[mapping.expansion_revenue]);
+    if (mapping.contraction_revenue) entry.contractionRevenue = cleanNumber(row[mapping.contraction_revenue]);
+    if (mapping.mrr) entry.mrr = cleanNumber(row[mapping.mrr]);
+    if (mapping.arr) entry.arr = cleanNumber(row[mapping.arr]);
+    results.push(entry);
+  });
+  return results.sort((a, b) => a.date - b.date);
+}
+
+export async function parseCustomerPanel(file) {
+  const parsed = await parseFile(file);
+  const mapping = autoMapCustomerPanel(parsed.headers);
+  const data = transformCustomerPanel(parsed.rawData, mapping);
+  return { data, mapping, headers: parsed.headers, rowCount: parsed.rowCount };
+}
+
+export async function parseCIM(file) {
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pageCount = pdf.numPages;
+    const textParts = [];
+
+    // Extract first 8 pages max (CIM executive summary is usually early)
+    const pagesToRead = Math.min(pageCount, 8);
+    for (let i = 1; i <= pagesToRead; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((item) => item.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (pageText.length > 50) textParts.push(pageText);
+    }
+
+    return { text: textParts.join('\n\n'), pageCount };
+  } catch (err) {
+    throw new Error('Failed to extract CIM text: ' + err.message);
+  }
 }

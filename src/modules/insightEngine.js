@@ -1,10 +1,11 @@
 import { getBenchmark } from './benchmarks';
 
-export function generateInsights(ltm, metricsData, businessType, dealType, qualitative = null) {
+export function generateInsights(ltm, metricsData, businessType, dealType, qualitative = null, customerPanelData = null) {
   const bench = getBenchmark(businessType);
   const baseSignals = generateAtomicSignals(ltm, bench);
   const qualSignals = qualitative ? generateQualitativeSignals(qualitative) : [];
-  const signals = [...baseSignals, ...qualSignals];
+  const cpSignals = customerPanelData ? generateCustomerPanelSignals(customerPanelData) : [];
+  const signals = [...baseSignals, ...qualSignals, ...cpSignals];
   const order = { red: 0, amber: 1, green: 2 };
   signals.sort((a, b) => order[a.severity] - order[b.severity]);
 
@@ -18,6 +19,58 @@ export function generateInsights(ltm, metricsData, businessType, dealType, quali
   }
 
   return { signals, composites, thesis, watchList };
+}
+
+function generateCustomerPanelSignals(cpData) {
+  const signals = [];
+  if (!cpData || cpData.length === 0) return signals;
+
+  // NRR signals — use last 3 months average if available
+  const nrrRows = cpData.filter((r) => r.nrr > 0);
+  if (nrrRows.length > 0) {
+    const recent = nrrRows.slice(-3);
+    const avgNRR = recent.reduce((s, r) => s + r.nrr, 0) / recent.length;
+    const fmtNRR = avgNRR.toFixed(1);
+    if (avgNRR >= 120) {
+      signals.push({ category: 'retention', severity: 'green', text: `Net Revenue Retention of ${fmtNRR}% — expansion revenue more than offsets churn; cohort economics improving over time` });
+    } else if (avgNRR >= 100) {
+      signals.push({ category: 'retention', severity: 'amber', text: `Net Revenue Retention of ${fmtNRR}% — stable cohorts but limited upsell momentum; expansion revenue approximately offsets churn` });
+    } else {
+      signals.push({ category: 'retention', severity: 'red', text: `Net Revenue Retention of ${fmtNRR}% — revenue base is shrinking net of churn; requires top-of-funnel growth to offset cohort decay` });
+    }
+  }
+
+  // GRR signals
+  const grrRows = cpData.filter((r) => r.grr > 0);
+  if (grrRows.length > 0) {
+    const recent = grrRows.slice(-3);
+    const avgGRR = recent.reduce((s, r) => s + r.grr, 0) / recent.length;
+    const fmtGRR = avgGRR.toFixed(1);
+    if (avgGRR >= 90) {
+      signals.push({ category: 'retention', severity: 'green', text: `Gross Revenue Retention of ${fmtGRR}% — minimal gross churn; base recurring revenue is sticky` });
+    } else if (avgGRR >= 80) {
+      signals.push({ category: 'retention', severity: 'amber', text: `Gross Revenue Retention of ${fmtGRR}% — moderate gross churn; validate whether losses are concentrated in a specific segment or cohort` });
+    } else {
+      signals.push({ category: 'retention', severity: 'red', text: `Gross Revenue Retention of ${fmtGRR}% — elevated gross churn; underlying retention is weak independent of expansion` });
+    }
+  }
+
+  // Customer churn signals — compute trailing 3-month avg churn rate
+  const churnRows = cpData.filter((r) => r.churnedCustomers !== undefined && r.activeCustomers > 0);
+  if (churnRows.length >= 3) {
+    const recent = churnRows.slice(-3);
+    const avgChurnRate = recent.reduce((s, r) => s + (r.churnedCustomers / r.activeCustomers) * 100, 0) / recent.length;
+    const annualised = avgChurnRate * 12;
+    if (annualised < 10) {
+      signals.push({ category: 'retention', severity: 'green', text: `Annualised logo churn of ${annualised.toFixed(1)}% — low attrition supports durable ARR base` });
+    } else if (annualised < 20) {
+      signals.push({ category: 'retention', severity: 'amber', text: `Annualised logo churn of ${annualised.toFixed(1)}% — in-line with mid-market benchmarks but warrants cohort-level investigation` });
+    } else {
+      signals.push({ category: 'retention', severity: 'red', text: `Annualised logo churn of ${annualised.toFixed(1)}% — materially elevated; growth is treadmill-dependent on continuous new logo acquisition` });
+    }
+  }
+
+  return signals;
 }
 
 function generateQualitativeSignals(q) {

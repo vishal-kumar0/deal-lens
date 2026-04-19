@@ -25,7 +25,7 @@ export default function Dashboard({ config, qualitative, setQualitative }) {
     const quarterly = aggregateQuarterly(metricsData);
     const detectedRevenueModel = detectRevenueModel(metricsData);
     const detectedDealType = detectDealType(ltm);
-    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, detectedDealType, qualitative) : null;
+    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, detectedDealType, qualitative, config.customerPanelData) : null;
     const benchmark = getBenchmark(config.businessType);
     return { metricsData, ltm, bridge, quarterly, insights, benchmark, detectedRevenueModel, detectedDealType };
   }, [config, qualitative]);
@@ -71,6 +71,8 @@ export default function Dashboard({ config, qualitative, setQualitative }) {
             benchmark={processed.benchmark}
             qualitative={qualitative}
             setQualitative={setQualitative}
+            cimText={config.cimText}
+            customerPanelData={config.customerPanelData}
           />
         )}
         {activeTab === 'growth' && (
