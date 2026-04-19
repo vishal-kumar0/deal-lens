@@ -8,10 +8,10 @@ import CustomersTab from './CustomersTab';
 import EfficiencyTab from './EfficiencyTab';
 
 const TABS = [
-  { id: 'summary', label: 'Executive Summary' },
-  { id: 'growth', label: 'Growth' },
-  { id: 'customers', label: 'Customers' },
-  { id: 'efficiency', label: 'Efficiency' },
+  { id: 'summary', label: 'Deal Overview' },
+  { id: 'growth', label: 'Growth Engine' },
+  { id: 'customers', label: 'Customer Quality' },
+  { id: 'efficiency', label: 'Quality of Earnings' },
 ];
 
 export default function Dashboard({ config, qualitative, setQualitative }) {
@@ -73,6 +73,7 @@ export default function Dashboard({ config, qualitative, setQualitative }) {
             setQualitative={setQualitative}
             cimText={config.cimText}
             customerPanelData={config.customerPanelData}
+            metricsData={processed.metricsData}
           />
         )}
         {activeTab === 'growth' && (

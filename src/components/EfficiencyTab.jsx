@@ -1,176 +1,297 @@
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { useMemo } from 'react';
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
+} from 'recharts';
 import { fmt, fmtCurrency } from '../modules/insightEngine';
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload) return null;
+const COLORS = {
+  navy: '#1E3A5F',
+  amber: '#C47A2C',
+  green: '#2D6B4A',
+  red: '#8B1C1C',
+  muted: '#8A837A',
+};
+
+const MarginTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
   return (
     <div className="custom-tooltip">
-      <div className="label">{label}</div>
+      <div className="tt-label">{label}</div>
       {payload.map((p, i) => (
-        <div key={i} className="item" style={{ color: p.color }}>
-          {p.name}: {typeof p.value === 'number' ? (p.name.includes('£') || p.name.includes('EBITDA') ? fmtCurrency(p.value) : `${fmt(p.value)}%`) : p.value}
+        <div key={i} className="tt-row">
+          <span className="tt-name">{p.name}</span>
+          <span className="tt-value" style={{ color: p.color }}>{fmt(p.value)}%</span>
         </div>
       ))}
     </div>
   );
 };
 
-export default function EfficiencyTab({ data, ltm, bridge, benchmark }) {
+const WaterfallTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const entry = payload.find((p) => p.dataKey === 'display');
+  if (!entry) return null;
+  return (
+    <div className="custom-tooltip">
+      <div className="tt-label">{label}</div>
+      <div className="tt-row">
+        <span className="tt-name">EBITDA Impact</span>
+        <span className="tt-value" style={{ color: entry.fill }}>
+          {entry.payload.rawValue >= 0 ? '+' : ''}{fmtCurrency(entry.payload.rawValue)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+export default function EfficiencyTab({ data, metricsData, ltm, bridge, benchmark }) {
   const chartData = data.map((d) => ({
     name: d.dateLabel,
-    'Gross Margin %': parseFloat((d.grossMargin ?? 0).toFixed(1)),
-    'EBITDA Margin %': parseFloat((d.ebitdaMargin ?? 0).toFixed(1)),
-    'OpEx % Revenue': parseFloat((d.opexPctRevenue ?? 0).toFixed(1)),
+    'Gross Margin': parseFloat((d.grossMargin ?? 0).toFixed(1)),
+    'EBITDA Margin': parseFloat((d.ebitdaMargin ?? 0).toFixed(1)),
   }));
 
-  // Operating leverage signal
-  let opLeverage = null;
-  if (ltm?.revenueGrowth !== null && ltm?.ebitdaMarginDelta !== null) {
-    if (ltm.revenueGrowth > 0 && ltm.ebitdaMarginDelta > 0) {
-      opLeverage = { color: 'green', text: 'Operating leverage is building — revenue is growing while EBITDA margin expands' };
-    } else if (ltm.revenueGrowth > 0 && ltm.ebitdaMarginDelta < -2) {
-      opLeverage = { color: 'red', text: 'No operating leverage — OpEx is growing faster than revenue, compressing EBITDA' };
-    } else {
-      opLeverage = { color: 'amber', text: 'Limited operating leverage — cost structure is scaling roughly in-line with revenue' };
-    }
-  }
+  const waterfallData = useMemo(() => {
+    if (!bridge) return [];
+    let running = 0;
+    return bridge.items.map((item) => {
+      if (item.isTotal) {
+        return { name: item.name, base: 0, display: item.value, rawValue: item.value, isTotal: true };
+      }
+      const base = item.value >= 0 ? running : running + item.value;
+      running += item.value;
+      return { name: item.name, base, display: Math.abs(item.value), rawValue: item.value, isTotal: false };
+    });
+  }, [bridge]);
+
+  // Find trough (margin low-point) and current trend
+  const troughPoint = chartData.reduce((minI, d, i) =>
+    (i === 0 || d['Gross Margin'] < chartData[minI]['Gross Margin']) ? i : minI, 0);
+  const troughLabel = chartData[troughPoint]?.name;
+
+  const gmVsBench = ltm ? ltm.ltmGrossMargin - benchmark.grossMargin.median : null;
+  const marginTrend = ltm?.gmDelta !== null && ltm.gmDelta !== undefined
+    ? (ltm.gmDelta > 0 ? 'expanding' : ltm.gmDelta < -1 ? 'compressing' : 'stable')
+    : null;
+
+  const opLeverageText = (() => {
+    if (!ltm?.revenueGrowth || !ltm?.ebitdaMarginDelta) return null;
+    if (ltm.revenueGrowth > 0 && ltm.ebitdaMarginDelta > 1)
+      return `Operating leverage is building — revenue grew ${fmt(ltm.revenueGrowth)}% while EBITDA margin expanded ${fmt(ltm.ebitdaMarginDelta)}pp. The cost structure is scaling more slowly than the top line.`;
+    if (ltm.revenueGrowth > 0 && ltm.ebitdaMarginDelta < -2)
+      return `No operating leverage visible in this period — costs are growing faster than revenue, compressing EBITDA margin by ${fmt(Math.abs(ltm.ebitdaMarginDelta))}pp despite top-line growth.`;
+    return `Cost structure is scaling roughly in-line with revenue — EBITDA margin ${ltm.ebitdaMarginDelta >= 0 ? 'improved marginally' : 'was broadly flat'} at ${fmt(ltm.ebitdaMarginDelta)}pp.`;
+  })();
+
+  const gmNarrative = gmVsBench !== null
+    ? `Gross margin of ${fmt(ltm.ltmGrossMargin)}% is ${Math.abs(gmVsBench) < 1 ? 'in-line with' : gmVsBench > 0 ? `${fmt(gmVsBench)}pp above` : `${fmt(Math.abs(gmVsBench))}pp below`} the ${benchmark.label} median of ${benchmark.grossMargin.median}%. Margin is ${marginTrend === 'expanding' ? 'expanding' : marginTrend === 'compressing' ? 'compressing' : 'broadly stable'} on a LTM basis${ltm.gmDelta ? ` (${ltm.gmDelta >= 0 ? '+' : ''}${fmt(ltm.gmDelta)}pp YoY)` : ''}.`
+    : null;
+
+  const chartHeadline = ltm
+    ? `Gross margin ${fmt(ltm.ltmGrossMargin)}% · EBITDA margin ${fmt(ltm.ltmEBITDAMargin)}%`
+    : 'Margin profile over time';
 
   return (
     <div>
-      {/* Gross Margin with benchmark */}
+      {/* Combined margin chart + narrative panel */}
       <div className="chart-section">
         <div className="chart-panel">
-          <div className="chart-title">Gross Margin % Over Time</div>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip content={<CustomTooltip />} />
+          <div className="chart-title-headline">{chartHeadline}</div>
+          <div className="chart-title-sub">
+            The gap between gross margin and EBITDA margin reflects the operating cost burden
+          </div>
+          <div className="chart-legend">
+            <div className="chart-legend-item">
+              <div className="chart-legend-line" style={{ background: COLORS.navy }} />
+              Gross Margin %
+            </div>
+            <div className="chart-legend-item">
+              <div className="chart-legend-line" style={{ background: COLORS.amber }} />
+              EBITDA Margin %
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="0" stroke="#E8E3DD" horizontal={true} vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 10, fill: COLORS.muted }}
+                tickLine={false}
+                axisLine={{ stroke: '#E2DDD6' }}
+                interval={5}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: COLORS.muted }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `${v}%`}
+                domain={['auto', 'auto']}
+                width={40}
+              />
+              <Tooltip content={<MarginTooltip />} />
               <ReferenceLine
                 y={benchmark.grossMargin.median}
-                stroke="var(--amber)"
-                strokeDasharray="6 4"
-                label={{ value: `${benchmark.label} median: ${benchmark.grossMargin.median}%`, position: 'right', fill: 'var(--amber)', fontSize: 10 }}
+                stroke={COLORS.navy}
+                strokeDasharray="4 4"
+                strokeOpacity={0.3}
+                label={{ value: `GM benchmark ${benchmark.grossMargin.median}%`, position: 'right', fill: COLORS.muted, fontSize: 9 }}
               />
-              <Line dataKey="Gross Margin %" stroke="var(--chart-1)" strokeWidth={2.5} dot={false} />
+              <Line
+                dataKey="Gross Margin"
+                stroke={COLORS.navy}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: COLORS.navy, strokeWidth: 0 }}
+              />
+              <Line
+                dataKey="EBITDA Margin"
+                stroke={COLORS.amber}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: COLORS.amber, strokeWidth: 0 }}
+                strokeDasharray="6 3"
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
         <div className="insight-panel">
-          <div className="insight-title">Efficiency Insights</div>
-          <div className="insight-item">
-            <div>
-              <div className="insight-label">LTM Gross Margin</div>
-              <div className="insight-value" style={{
-                color: ltm?.ltmGrossMargin >= benchmark.grossMargin.green ? 'var(--green)' :
-                  ltm?.ltmGrossMargin >= benchmark.grossMargin.amber ? 'var(--amber)' : 'var(--red)',
-              }}>
-                {ltm ? `${fmt(ltm.ltmGrossMargin)}%` : 'N/A'}
-              </div>
-            </div>
+          <div className="insight-title">Quality of Earnings</div>
+          {gmNarrative && <div className="narrative-insight">{gmNarrative}</div>}
+          {opLeverageText && <div className="narrative-insight">{opLeverageText}</div>}
+          <div className="metric-row">
+            <span className="metric-label">Gross Margin (LTM)</span>
+            <span className="metric-value">
+              {ltm ? `${fmt(ltm.ltmGrossMargin)}%` : '—'}
+              {ltm?.gmDelta !== null && ltm?.gmDelta !== undefined && (
+                <span className={`metric-delta ${ltm.gmDelta >= 0 ? 'pos' : 'neg'}`}>
+                  {ltm.gmDelta >= 0 ? '+' : ''}{fmt(ltm.gmDelta)}pp
+                </span>
+              )}
+            </span>
           </div>
-          <div className="insight-item">
-            <div>
-              <div className="insight-label">vs. Industry Benchmark</div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 2 }}>
-                {ltm ? (
-                  ltm.ltmGrossMargin >= benchmark.grossMargin.median
-                    ? `${fmt(ltm.ltmGrossMargin - benchmark.grossMargin.median)}pp above ${benchmark.label} median`
-                    : `${fmt(Math.abs(ltm.ltmGrossMargin - benchmark.grossMargin.median))}pp below ${benchmark.label} median`
-                ) : 'N/A'}
-              </div>
-            </div>
+          <div className="metric-row">
+            <span className="metric-label">vs {benchmark.label} Median</span>
+            <span className="metric-value" style={{ fontSize: 12 }}>
+              {gmVsBench !== null ? (
+                <span style={{ color: gmVsBench >= 0 ? COLORS.green : COLORS.red }}>
+                  {gmVsBench >= 0 ? '+' : ''}{fmt(gmVsBench)}pp
+                </span>
+              ) : '—'}
+            </span>
           </div>
-          <div className="insight-item">
-            <div>
-              <div className="insight-label">Margin Trend (LTM)</div>
-              <div className="insight-value" style={{
-                color: ltm?.gmDelta >= 0 ? 'var(--green)' : ltm?.gmDelta >= benchmark.gmDelta.amber ? 'var(--amber)' : 'var(--red)',
-              }}>
-                {ltm?.gmDelta !== null ? `${ltm.gmDelta >= 0 ? '+' : ''}${fmt(ltm.gmDelta)}pp` : 'N/A'}
-              </div>
-            </div>
+          <div className="metric-row">
+            <span className="metric-label">EBITDA Margin (LTM)</span>
+            <span className="metric-value">
+              {ltm ? `${fmt(ltm.ltmEBITDAMargin)}%` : '—'}
+              {ltm?.ebitdaMarginDelta !== null && ltm?.ebitdaMarginDelta !== undefined && (
+                <span className={`metric-delta ${ltm.ebitdaMarginDelta >= 0 ? 'pos' : 'neg'}`}>
+                  {ltm.ebitdaMarginDelta >= 0 ? '+' : ''}{fmt(ltm.ebitdaMarginDelta)}pp
+                </span>
+              )}
+            </span>
           </div>
-          <div className="insight-item">
-            <div>
-              <div className="insight-label">EBITDA Margin</div>
-              <div className="insight-value">
-                {ltm ? `${fmt(ltm.ltmEBITDAMargin)}%` : 'N/A'}
-                {ltm?.ebitdaMarginDelta !== null && (
-                  <span style={{ fontSize: 12, marginLeft: 8, color: ltm.ebitdaMarginDelta >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                    ({ltm.ebitdaMarginDelta >= 0 ? '+' : ''}{fmt(ltm.ebitdaMarginDelta)}pp)
-                  </span>
-                )}
-              </div>
-            </div>
+          <div className="metric-row">
+            <span className="metric-label">EBITDA Benchmark</span>
+            <span className="metric-value" style={{ fontSize: 12, color: COLORS.muted }}>
+              {benchmark.ebitdaMargin.median}% median
+            </span>
           </div>
-          {opLeverage && (
-            <div className="insight-item">
-              <div>
-                <div className="insight-label">Operating Leverage</div>
-                <div style={{ fontSize: 13, color: `var(--${opLeverage.color})`, lineHeight: 1.5, marginTop: 4 }}>
-                  {opLeverage.text}
-                </div>
-              </div>
+          {ltm?.ruleOf40 !== null && ltm?.ruleOf40 !== undefined && benchmark.useRuleOf40 && (
+            <div className="metric-row">
+              <span className="metric-label">Rule of 40</span>
+              <span className="metric-value">
+                {fmt(ltm.ruleOf40)}
+                <span className={`metric-delta ${ltm.ruleOf40 >= 40 ? 'pos' : ltm.ruleOf40 >= 30 ? 'neu' : 'neg'}`}>
+                  {ltm.ruleOf40 >= 40 ? '✓' : ''}
+                </span>
+              </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* EBITDA Margin chart */}
-      <div className="chart-panel" style={{ marginTop: 20 }}>
-        <div className="chart-title">EBITDA Margin % Over Time</div>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={(v) => `${v}%`} />
-            <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine
-              y={benchmark.ebitdaMargin.median}
-              stroke="var(--amber)"
-              strokeDasharray="6 4"
-            />
-            <Line dataKey="EBITDA Margin %" stroke="var(--chart-3)" strokeWidth={2.5} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* OpEx % of Revenue */}
-      <div className="chart-panel" style={{ marginTop: 20 }}>
-        <div className="chart-title">Operating Costs as % of Revenue</div>
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={(v) => `${v}%`} />
-            <Tooltip content={<CustomTooltip />} />
-            <Area dataKey="OpEx % Revenue" stroke="var(--chart-4)" fill="var(--chart-4)" fillOpacity={0.15} strokeWidth={2} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* EBITDA Bridge */}
-      {bridge && (
-        <div className="chart-panel" style={{ marginTop: 20 }}>
-          <div className="chart-title">EBITDA Bridge: Prior LTM → Current LTM</div>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={bridge.items}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                {bridge.items.map((entry, i) => (
-                  <Cell key={i} fill={entry.isTotal ? 'var(--chart-1)' : entry.value >= 0 ? 'var(--green)' : 'var(--red)'} />
+      {/* EBITDA Bridge — floating waterfall */}
+      {bridge && waterfallData.length > 0 && (
+        <div className="chart-panel" style={{ marginTop: 16 }}>
+          <div className="chart-title-headline">EBITDA Bridge: Prior LTM → Current LTM</div>
+          <div className="chart-title-sub">Decomposition of EBITDA movement by driver — revenue growth, gross margin, and operating cost changes</div>
+          <div className="chart-legend">
+            <div className="chart-legend-item">
+              <div className="chart-legend-dot" style={{ background: COLORS.green }} />
+              Positive contribution
+            </div>
+            <div className="chart-legend-item">
+              <div className="chart-legend-dot" style={{ background: COLORS.red }} />
+              Headwind / cost drag
+            </div>
+            <div className="chart-legend-item">
+              <div className="chart-legend-dot" style={{ background: COLORS.navy }} />
+              Opening / closing total
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={waterfallData} barCategoryGap="32%" margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="0" stroke="#E8E3DD" horizontal={true} vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: COLORS.muted }} tickLine={false} axisLine={{ stroke: '#E2DDD6' }} />
+              <YAxis tick={{ fontSize: 10, fill: COLORS.muted }} tickLine={false} axisLine={false} tickFormatter={(v) => `£${(v / 1000).toFixed(0)}K`} width={48} />
+              <Tooltip content={<WaterfallTooltip />} />
+              <Bar dataKey="base" stackId="wf" fill="transparent" />
+              <Bar dataKey="display" stackId="wf" radius={[2, 2, 0, 0]}>
+                {waterfallData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={entry.isTotal ? COLORS.navy : entry.rawValue >= 0 ? COLORS.green : COLORS.red}
+                    opacity={entry.isTotal ? 1 : 0.85}
+                  />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* Cost structure — EBITDA margin trend standalone */}
+      <div className="chart-panel" style={{ marginTop: 16 }}>
+        <div className="chart-title-headline">EBITDA Margin Progression</div>
+        <div className="chart-title-sub">
+          Absolute EBITDA margin over the full period — benchmark {benchmark.ebitdaMargin.median}% shown as reference
+        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={data.map((d) => ({ name: d.dateLabel, 'EBITDA Margin': parseFloat((d.ebitdaMargin ?? 0).toFixed(1)) }))} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="ebitdaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={COLORS.amber} stopOpacity={0.12} />
+                <stop offset="95%" stopColor={COLORS.amber} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="0" stroke="#E8E3DD" horizontal={true} vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: COLORS.muted }} tickLine={false} axisLine={{ stroke: '#E2DDD6' }} interval={5} />
+            <YAxis tick={{ fontSize: 10, fill: COLORS.muted }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} width={36} />
+            <Tooltip content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              return (
+                <div className="custom-tooltip">
+                  <div className="tt-label">{label}</div>
+                  <div className="tt-row">
+                    <span className="tt-name">EBITDA Margin</span>
+                    <span className="tt-value">{fmt(payload[0].value)}%</span>
+                  </div>
+                </div>
+              );
+            }} />
+            <ReferenceLine
+              y={benchmark.ebitdaMargin.median}
+              stroke={COLORS.amber}
+              strokeDasharray="4 4"
+              strokeOpacity={0.4}
+              label={{ value: `Benchmark ${benchmark.ebitdaMargin.median}%`, position: 'right', fill: COLORS.muted, fontSize: 9 }}
+            />
+            <Area dataKey="EBITDA Margin" stroke={COLORS.amber} fill="url(#ebitdaGrad)" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COLORS.amber, strokeWidth: 0 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
