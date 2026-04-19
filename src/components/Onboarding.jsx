@@ -4,7 +4,7 @@ import {
   parseFile, transformData, transformSampleData, getMissingFields,
   detectFileType, parseCustomerPanel, parseCIM, autoMapCustomerPanel,
 } from '../modules/dataIngestion';
-import { generateSampleData } from '../modules/dataSimulation';
+import { generateSampleData, generateCustomerPanelData } from '../modules/dataSimulation';
 
 const STEPS = ['business_type', 'upload', 'mapping', 'quality_report'];
 
@@ -134,7 +134,20 @@ export default function Onboarding({ onComplete }) {
     if (step === 1 && useSample) {
       const sampleRaw = generateSampleData();
       const data = transformSampleData(sampleRaw);
-      onComplete({ ...config, data, hasNewCustomers: true, customerPanelData: null, cimText: null });
+      const cpRaw = generateCustomerPanelData();
+      const customerPanelData = cpRaw.map((r) => ({
+        date: new Date(2022, cpRaw.indexOf(r), 1),
+        dateLabel: r.date,
+        nrr: r.nrr,
+        grr: r.grr,
+        newCustomers: r.new_customers,
+        churnedCustomers: r.churned_customers,
+        activeCustomers: r.active_customers,
+        expansionRevenue: r.expansion_revenue,
+        contractionRevenue: r.contraction_revenue,
+        mrr: r.mrr,
+      }));
+      onComplete({ ...config, data, hasNewCustomers: true, customerPanelData, cimText: null });
       return;
     }
 
@@ -302,10 +315,24 @@ export default function Onboarding({ onComplete }) {
 
                 {!pnlFile && uploadedFiles.length === 0 && (
                   <>
-                    <div className="upload-divider">or</div>
-                    <button className="btn-sample" onClick={handleSample}>
-                      📊 Use Sample Data — "Growth with Emerging Pressure"
-                    </button>
+                    <div className="upload-divider">or use the sample deal</div>
+                    <div className="sample-deal-card">
+                      <div className="sample-deal-header">
+                        <span className="sample-deal-icon">🥐</span>
+                        <div>
+                          <div className="sample-deal-name">Crust &amp; Crumb Artisan Bakery</div>
+                          <div className="sample-deal-desc">2-location bakery + wholesale channel · 36 months Jan 2022–Dec 2024 · Margin compression &amp; recovery story</div>
+                        </div>
+                      </div>
+                      <button className="btn-sample" onClick={handleSample}>
+                        Load sample deal (P&amp;L + Customer Panel pre-loaded)
+                      </button>
+                      <div className="sample-download-row">
+                        <span className="sample-download-label">Or upload manually:</span>
+                        <a className="sample-download-link" href="/samples/crust_and_crumb_pnl.csv" download>↓ P&amp;L CSV</a>
+                        <a className="sample-download-link" href="/samples/crust_and_crumb_customer_panel.csv" download>↓ Customer Panel CSV</a>
+                      </div>
+                    </div>
                   </>
                 )}
 
@@ -320,10 +347,10 @@ export default function Onboarding({ onComplete }) {
             {useSample && (
               <>
                 <div className="file-loaded">
-                  <div className="icon">📊</div>
+                  <div className="icon">🥐</div>
                   <div className="info">
-                    <div className="name">Sample Data</div>
-                    <div className="meta">24 months · Growth with Emerging Pressure</div>
+                    <div className="name">Crust &amp; Crumb Artisan Bakery</div>
+                    <div className="meta">36 months · Monthly P&amp;L + Customer Panel pre-loaded</div>
                   </div>
                   <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
                     onClick={() => setUseSample(false)}>

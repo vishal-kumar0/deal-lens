@@ -509,6 +509,29 @@ body {
 .dq-error-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
 .dq-error-table tr:last-child td { border-bottom: none; }
 
+/* ---- Sample Deal Card ---- */
+.sample-deal-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-top: 4px;
+}
+.sample-deal-header {
+  display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px;
+}
+.sample-deal-icon { font-size: 24px; line-height: 1; margin-top: 2px; }
+.sample-deal-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+.sample-deal-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.sample-download-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap;
+}
+.sample-download-label { font-size: 11px; color: var(--text-muted); }
+.sample-download-link {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  text-decoration: none; padding: 3px 8px; background: var(--bg-surface);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.sample-download-link:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
 /* ---- Multi-file Upload ---- */
 .multi-file-list {
   margin-top: 12px; display: flex; flex-direction: column; gap: 6px;
