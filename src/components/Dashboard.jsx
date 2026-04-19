@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
-import { computeMetrics, computeLTMMetrics, computeEBITDABridge, aggregateQuarterly } from '../modules/metricCalculator';
+import { computeMetrics, computeLTMMetrics, computeEBITDABridge, aggregateQuarterly, detectRevenueModel, detectDealType } from '../modules/metricCalculator';
 import { generateInsights } from '../modules/insightEngine';
-import { getBenchmark } from '../modules/benchmarks';
-import { REVENUE_MODELS, DEAL_TYPES } from '../modules/benchmarks';
+import { getBenchmark, REVENUE_MODELS, DEAL_TYPES } from '../modules/benchmarks';
 import ExecutiveSummary from './ExecutiveSummary';
 import GrowthTab from './GrowthTab';
 import CustomersTab from './CustomersTab';
@@ -24,17 +23,22 @@ export default function Dashboard({ config, qualitative, setQualitative }) {
     const ltm = computeLTMMetrics(metricsData);
     const bridge = computeEBITDABridge(metricsData);
     const quarterly = aggregateQuarterly(metricsData);
-    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, config.dealType, qualitative) : null;
+    const detectedRevenueModel = detectRevenueModel(metricsData);
+    const detectedDealType = detectDealType(ltm);
+    const insights = ltm ? generateInsights(ltm, metricsData, config.businessType, detectedDealType, qualitative) : null;
     const benchmark = getBenchmark(config.businessType);
-    return { metricsData, ltm, bridge, quarterly, insights, benchmark };
+    return { metricsData, ltm, bridge, quarterly, insights, benchmark, detectedRevenueModel, detectedDealType };
   }, [config, qualitative]);
 
   const displayData = timeframe === 'quarterly' ? processed.quarterly : processed.metricsData;
 
+  const rmLabel = REVENUE_MODELS[processed.detectedRevenueModel]?.label ?? processed.detectedRevenueModel;
+  const dtLabel = DEAL_TYPES[processed.detectedDealType]?.label ?? processed.detectedDealType;
+
   return (
     <div className="dashboard">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div className="tab-bar" style={{ flex: 1 }}>
+      <div className="dashboard-topbar">
+        <div className="tab-bar">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -45,9 +49,14 @@ export default function Dashboard({ config, qualitative, setQualitative }) {
             </button>
           ))}
         </div>
+        <div className="detected-profile">
+          <span className="detected-label">Detected</span>
+          <span className="detected-tag detected-tag-blue">{dtLabel}</span>
+          <span className="detected-tag detected-tag-muted">{rmLabel}</span>
+        </div>
       </div>
 
-      <div className="tab-content">
+      <div className={`tab-content tab-${activeTab}`}>
         {activeTab !== 'summary' && (
           <div className="timeframe-toggle">
             <button className={`tf-btn ${timeframe === 'monthly' ? 'active' : ''}`} onClick={() => setTimeframe('monthly')}>Monthly</button>

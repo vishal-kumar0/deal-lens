@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
-import BENCHMARKS, { REVENUE_MODELS, DEAL_TYPES } from '../modules/benchmarks';
+import BENCHMARKS from '../modules/benchmarks';
 import { parseFile, transformData, transformSampleData, getMissingFields } from '../modules/dataIngestion';
 import { generateSampleData } from '../modules/dataSimulation';
 
-const STEPS = ['business_type', 'revenue_model', 'deal_type', 'upload', 'mapping', 'quality_report'];
+const STEPS = ['business_type', 'upload', 'mapping', 'quality_report'];
 
 function columnCompleteness(data) {
   return ['revenue', 'customers', 'cogs', 'opex'].map((field) => {
@@ -29,7 +29,7 @@ function outlierFlags(data) {
 
 export default function Onboarding({ onComplete }) {
   const [step, setStep] = useState(0);
-  const [config, setConfig] = useState({ businessType: null, revenueModel: null, dealType: null });
+  const [config, setConfig] = useState({ businessType: null });
   const [fileData, setFileData] = useState(null);
   const [mapping, setMapping] = useState({});
   const [parseResult, setParseResult] = useState(null);
@@ -39,28 +39,26 @@ export default function Onboarding({ onComplete }) {
 
   const canNext = () => {
     if (step === 0) return config.businessType !== null;
-    if (step === 1) return config.revenueModel !== null;
-    if (step === 2) return config.dealType !== null;
-    if (step === 3) return fileData !== null || useSample;
-    if (step === 4) return getMissingFields(mapping).length === 0;
-    if (step === 5) return true;
+    if (step === 1) return fileData !== null || useSample;
+    if (step === 2) return getMissingFields(mapping).length === 0;
+    if (step === 3) return true;
     return false;
   };
 
   const handleNext = () => {
-    if (step === 3 && useSample) {
+    if (step === 1 && useSample) {
       const sampleRaw = generateSampleData();
       const data = transformSampleData(sampleRaw);
       onComplete({ ...config, data, hasNewCustomers: true });
       return;
     }
-    if (step === 4) {
+    if (step === 2) {
       const result = transformData(fileData.rawData, mapping);
       setParseResult(result);
-      setStep(5);
+      setStep(3);
       return;
     }
-    if (step === 5) {
+    if (step === 3) {
       onComplete({ ...config, data: parseResult.data, hasNewCustomers: !!mapping.new_customers });
       return;
     }
@@ -105,8 +103,8 @@ export default function Onboarding({ onComplete }) {
 
         {step === 0 && (
           <>
-            <h2 className="onboarding-title">Business Type</h2>
-            <p className="onboarding-subtitle">Select the target company's industry. This determines benchmarks and insight framing.</p>
+            <h2 className="onboarding-title">Select Sector</h2>
+            <p className="onboarding-subtitle">Choose the target company's industry. This sets the benchmark thresholds used throughout the analysis.</p>
             <div className="option-grid">
               {Object.entries(BENCHMARKS).map(([key, b]) => (
                 <div
@@ -124,50 +122,10 @@ export default function Onboarding({ onComplete }) {
 
         {step === 1 && (
           <>
-            <h2 className="onboarding-title">Revenue Model</h2>
-            <p className="onboarding-subtitle">How does the business generate revenue? This affects how we interpret customer and ARPU trends.</p>
-            <div className="option-list">
-              {Object.entries(REVENUE_MODELS).map(([key, rm]) => (
-                <div
-                  key={key}
-                  className={`option-list-item ${config.revenueModel === key ? 'selected' : ''}`}
-                  onClick={() => setConfig({ ...config, revenueModel: key })}
-                >
-                  <div className="label">{rm.label}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <h2 className="onboarding-title">Deal Type</h2>
-            <p className="onboarding-subtitle">What lens should the analysis use? This shapes the Executive Summary language.</p>
-            <div className="option-list">
-              {Object.entries(DEAL_TYPES).map(([key, dt]) => (
-                <div
-                  key={key}
-                  className={`option-list-item ${config.dealType === key ? 'selected' : ''}`}
-                  onClick={() => setConfig({ ...config, dealType: key })}
-                >
-                  <div className="icon">{dt.icon}</div>
-                  <div>
-                    <div className="label">{dt.label}</div>
-                    <div className="desc" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{dt.description}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {step === 3 && (
-          <>
-            <h2 className="onboarding-title">Upload Data</h2>
+            <h2 className="onboarding-title">Upload Financial Data</h2>
             <p className="onboarding-subtitle">
-              Upload a CSV or Excel file with monthly data: Date, Revenue, Customers, COGS, OpEx.
-              Optional: New Customers, Headcount, Marketing Spend.
+              Drop a CSV or Excel file with monthly financials. Required: Date, Revenue, Customers, COGS, OpEx.
+              Revenue model and deal type are detected automatically from the data.
             </p>
             {!fileData && !useSample && (
               <>
@@ -225,7 +183,7 @@ export default function Onboarding({ onComplete }) {
           </>
         )}
 
-        {step === 4 && fileData && (
+        {step === 2 && fileData && (
           <>
             <h2 className="onboarding-title">Column Mapping</h2>
             <p className="onboarding-subtitle">
@@ -252,7 +210,7 @@ export default function Onboarding({ onComplete }) {
           </>
         )}
 
-        {step === 5 && parseResult && (
+        {step === 3 && parseResult && (
           <>
             <h2 className="onboarding-title">Data Quality Report</h2>
             <p className="onboarding-subtitle">Review before launching the dashboard. Analysis is available regardless of warnings.</p>
@@ -328,7 +286,7 @@ export default function Onboarding({ onComplete }) {
         <div className="btn-row">
           {step > 0 && <button className="btn-secondary" onClick={handleBack}>Back</button>}
           <button className="btn-primary" disabled={!canNext()} onClick={handleNext}>
-            {step === 5 || (step === 3 && useSample) ? 'Launch Dashboard →' : step === 4 ? 'Review Data →' : 'Continue'}
+            {step === 3 || (step === 1 && useSample) ? 'Launch Dashboard →' : step === 2 ? 'Review Data →' : 'Continue'}
           </button>
         </div>
       </div>

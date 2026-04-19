@@ -94,12 +94,15 @@ export default function ExecutiveSummary({ ltm, insights, benchmark, qualitative
 
       {/* Watch List */}
       <div className="section">
-        <div className="section-title">Diligence Watch List<div className="line" /></div>
+        <div className="section-title">Key Questions to Explore<div className="line" /></div>
         <div className="watch-list">
           {insights.watchList.map((item, i) => (
             <div key={i} className="watch-item">
-              <div className="claim">↗ {item.claim}</div>
-              <div className="question">{item.question}</div>
+              <div className="watch-item-num">{String(i + 1).padStart(2, '0')}</div>
+              <div className="watch-item-body">
+                <div className="claim">{item.claim}</div>
+                <div className="question">{item.question}</div>
+              </div>
             </div>
           ))}
         </div>

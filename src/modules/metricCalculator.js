@@ -236,6 +236,42 @@ export function aggregateQuarterly(metricsData) {
 }
 
 /**
+ * Detect revenue model from ARPU and customer count stability.
+ */
+export function detectRevenueModel(metricsData) {
+  if (metricsData.length < 3) return 'hybrid';
+  const arpus = metricsData.map((d) => d.arpu).filter((v) => v > 0);
+  if (arpus.length < 3) return 'transactional';
+
+  const arpuMean = arpus.reduce((a, b) => a + b, 0) / arpus.length;
+  const arpuStd = Math.sqrt(arpus.reduce((a, b) => a + (b - arpuMean) ** 2, 0) / arpus.length);
+  const arpuCoV = arpuMean > 0 ? arpuStd / arpuMean : 1;
+
+  const custs = metricsData.map((d) => d.customers).filter((v) => v > 0);
+  const custMean = custs.reduce((a, b) => a + b, 0) / custs.length;
+  const custStd = Math.sqrt(custs.reduce((a, b) => a + (b - custMean) ** 2, 0) / custs.length);
+  const custCoV = custMean > 0 ? custStd / custMean : 1;
+
+  if (arpuCoV < 0.15) return 'subscription';
+  if (arpuCoV > 0.5 && custCoV > 0.3) return 'project';
+  if (custCoV > 0.4) return 'transactional';
+  return 'hybrid';
+}
+
+/**
+ * Detect deal type from LTM growth and EBITDA margin profile.
+ */
+export function detectDealType(ltm) {
+  if (!ltm) return 'buyout';
+  const { revenueGrowth, ltmEBITDAMargin } = ltm;
+  if (revenueGrowth !== null && revenueGrowth > 25) return 'growth_equity';
+  if (revenueGrowth !== null && revenueGrowth > 12 && ltmEBITDAMargin < 8) return 'growth_equity';
+  if (ltmEBITDAMargin < -5) return 'distressed';
+  if (revenueGrowth !== null && revenueGrowth < -5) return 'distressed';
+  return 'buyout';
+}
+
+/**
  * Compute revenue CAGR.
  */
 export function computeCAGR(metricsData) {

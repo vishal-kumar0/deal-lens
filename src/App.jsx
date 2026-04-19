@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
 import PrivacyModal from './components/PrivacyModal';
-import { DEAL_TYPES } from './modules/benchmarks';
 import BENCHMARKS from './modules/benchmarks';
 import './index.css';
 
@@ -62,7 +61,6 @@ export default function App() {
           {config && (
             <>
               <span className="header-badge">{BENCHMARKS[config.businessType]?.label}</span>
-              <span className="header-badge">{DEAL_TYPES[config.dealType]?.label}</span>
               <button
                 className={`header-btn sensitive-btn${sensitiveMode ? ' active' : ''}`}
                 onClick={() => setSensitiveMode((m) => !m)}

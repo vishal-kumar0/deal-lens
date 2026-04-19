@@ -3,24 +3,24 @@ export default function PrivacyModal({ onAcknowledge }) {
     <div className="privacy-overlay">
       <div className="privacy-card">
         <div className="privacy-icon">🔒</div>
-        <h2 className="privacy-title">Your data never leaves this device</h2>
-        <p className="privacy-subtitle">Before you upload any sensitive financials, here's exactly what this tool does and doesn't do.</p>
+        <h2 className="privacy-title">Deal data stays in this browser</h2>
+        <p className="privacy-subtitle">DealLens is a zero-upload tool. Client financials never leave your device — safe for NDA-protected materials.</p>
         <ul className="privacy-bullets">
           <li className="privacy-bullet">
             <span className="privacy-bullet-icon">✓</span>
-            <span>All processing happens in your browser — no servers, no uploads, no cloud storage</span>
+            <span>All analysis runs locally in your browser — no servers, no uploads, no third-party storage</span>
           </li>
           <li className="privacy-bullet">
             <span className="privacy-bullet-icon">✓</span>
-            <span>Closing this tab permanently destroys all uploaded data from memory</span>
+            <span>Closing this tab permanently destroys all data — nothing persists between sessions</span>
           </li>
           <li className="privacy-bullet">
             <span className="privacy-bullet-icon">ℹ</span>
-            <span>One external request is made: loading the Inter font from Google Fonts. This sends your IP address only — no deal data is transmitted</span>
+            <span>One external request: Google Fonts for typography. Sends your IP address only — no deal data transmitted</span>
           </li>
         </ul>
         <button className="btn-primary privacy-ack-btn" onClick={onAcknowledge}>
-          Acknowledged — start analysis
+          Understood — begin analysis
         </button>
       </div>
     </div>
